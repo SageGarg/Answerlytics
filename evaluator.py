@@ -1,8 +1,10 @@
 import json
 import os
 from typing import TypedDict
+from PyPDF2 import PdfReader
 from langgraph.graph import StateGraph, END
 from langchain_openai import ChatOpenAI
+from knowledgeBase import get_company_context
 
 llm = ChatOpenAI(model="gpt-4o", temperature=0)
 
@@ -14,13 +16,26 @@ class InterviewState(TypedDict):
     fillers: dict
     resume_context: str
     question: str
+    target_company: str        # NEW
+    company_context: str
     content_feedback: str
     delivery_feedback: str
     final_feedback: str
 
 def load_resume(filepath: str) -> str:
-    with open(filepath, "r") as f:
-        return f.read()
+    reader = PdfReader(filepath)
+    text = ""
+    for page in reader.pages:
+        text += page.extract_text()
+    return text.strip()
+
+def fetch_company_context(state: InterviewState) -> InterviewState:
+    print(f"Fetching {state['target_company']} interview intel...")
+    state["company_context"] = get_company_context(
+        state["target_company"], 
+        state["question"]
+    )
+    return state
 
 def evaluate_content(state: InterviewState) -> InterviewState:
     print("Evaluating content...")
@@ -92,6 +107,8 @@ RESUME AVAILABLE: {state['resume_context'][:500]}...
 
 CONTENT FEEDBACK: {state['content_feedback']}
 DELIVERY FEEDBACK: {state['delivery_feedback']}
+COMPANY-SPECIFIC INTEL FOR {state['target_company']}:
+{state['company_context']}
 
 STRICT RULES FOR THE REWRITE:
 - The suggested rewrite must ONLY use real projects and experiences from their resume
@@ -120,10 +137,12 @@ SUGGESTED REWRITE (using ONLY your real experience):
 
 def build_graph():
     graph = StateGraph(InterviewState)
+    graph.add_node("fetch_company_context", fetch_company_context)  # NEW
     graph.add_node("evaluate_content", evaluate_content)
     graph.add_node("evaluate_delivery", evaluate_delivery)
     graph.add_node("synthesize_feedback", synthesize_feedback)
-    graph.set_entry_point("evaluate_content")
+    graph.set_entry_point("fetch_company_context")                   # CHANGED
+    graph.add_edge("fetch_company_context", "evaluate_content")      # NEW
     graph.add_edge("evaluate_content", "evaluate_delivery")
     graph.add_edge("evaluate_delivery", "synthesize_feedback")
     graph.add_edge("synthesize_feedback", END)
@@ -134,10 +153,11 @@ if __name__ == "__main__":
         data = json.load(f)
 
     # Load resume as plain text
-    data["resume_context"] = load_resume("resume.txt")
+    data["resume_context"] = load_resume("resume.pdf")
     
     # Set the question being practiced
     data["question"] = "Tell me about yourself"
+    data["target_company"] = "Anthropic"  # Change this to test different companies
 
     app = build_graph()
     result = app.invoke(data)
