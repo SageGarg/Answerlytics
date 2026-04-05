@@ -16,7 +16,7 @@ class InterviewState(TypedDict):
     fillers: dict
     resume_context: str
     question: str
-    target_company: str        # NEW
+    target_company: str       
     company_context: str
     content_feedback: str
     delivery_feedback: str
@@ -100,36 +100,53 @@ Give specific delivery coaching:
 def synthesize_feedback(state: InterviewState) -> InterviewState:
     print("Synthesizing final feedback...")
 
-    prompt = f"""You are a senior interview coach. Combine the feedback below into one clear, 
-direct coaching summary. Be encouraging but honest.
+    prompt = f"""You are a brutally honest senior interview coach. 
+A candidate is practicing for a real interview at {state['target_company']}.
 
-RESUME AVAILABLE: {state['resume_context'][:500]}...
+THEIR ACTUAL ANSWER: "{state['transcript']}"
+
+STATS:
+- Duration: {state['duration_seconds']} seconds (minimum acceptable: 60 seconds)
+- Words: {state['word_count']} (minimum acceptable: 120 words)
+- WPM: {state['words_per_minute']}
+- Fillers: {state['fillers']}
+
+RESUME: {state['resume_context'][:500]}...
 
 CONTENT FEEDBACK: {state['content_feedback']}
 DELIVERY FEEDBACK: {state['delivery_feedback']}
-COMPANY-SPECIFIC INTEL FOR {state['target_company']}:
-{state['company_context']}
 
-STRICT RULES FOR THE REWRITE:
-- The suggested rewrite must ONLY use real projects and experiences from their resume
-- Do not invent any metrics or achievements
-- The rewrite should sound like a real human, not a robot
-- It should tell a story: journey → specific real project → passion → why this role
+SCORING RULES — follow these strictly, no exceptions:
+- Answer under 30 seconds → maximum score of 4/10, no matter what
+- Answer under 45 seconds → maximum score of 6/10, no matter what
+- Answer under 60 seconds → maximum score of 8/10
+- No specific project mentioned → deduct 2 points
+- No measurable impact mentioned → deduct 1 point
+- Unclear speech or hallucinated words detected → deduct 1 point
+- Score 7+ only if the answer would genuinely impress a recruiter
 
-Format exactly like this:
+This candidate spoke for {state['duration_seconds']} seconds with {state['word_count']} words.
+Be honest. A bad answer should get a 3 or 4. Don't sugarcoat.
 
-SCORE: X/10
+STRICT RULES FOR REWRITE:
+- Only use real projects from their resume
+- Never invent metrics
+- Sound human, not corporate
+
+Format exactly:
+
+SCORE: X/10 (and one sentence explaining why)
 
 TOP 3 THINGS TO FIX:
-1. [specific, actionable, based on their real resume]
-2. [specific, actionable]
-3. [specific, actionable]
+1. [brutally specific]
+2. [brutally specific]
+3. [brutally specific]
 
 WHAT YOU DID WELL:
-[honest positives]
+[honest — if nothing, say "not much in this attempt, but that's fixable"]
 
 SUGGESTED REWRITE (using ONLY your real experience):
-[rewrite here — should be 150-180 words, human, story-driven]"""
+[150-180 words, story-driven, human]"""
 
     response = llm.invoke(prompt)
     state["final_feedback"] = response.content
